@@ -88,32 +88,37 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const handleDeleteTodo = useCallback(async (id: number) => {
-    setDeletingIds([id]);
+  const handleDeleteTodos = useCallback(async (...ids: number[]) => {
+    setDeletingIds(ids);
     setNetworkTodoStatus(NetworkStatus.Deleting);
 
     try {
-      await deleteTodo(id);
-      setTodos(current => current.filter(todo => todo.id !== id));
+      const results = await Promise.allSettled(ids.map(id => deleteTodo(id)));
+
+      const successfullyDeleted = ids.filter(
+        (_, index) => results[index].status === 'fulfilled',
+      );
+      const failedToDelete = ids.length - successfullyDeleted.length;
+
+      if (failedToDelete > 0) {
+        setErrorMessage(ErrorMessage.FAIL_DELETING);
+      }
+
+      setTodos(current =>
+        current.filter(todo => !successfullyDeleted.includes(todo.id)),
+      );
     } catch (error) {
       setErrorMessage(ErrorMessage.FAIL_DELETING);
+    } finally {
       setDeletingIds([]);
     }
   }, []);
 
   const handleDeleteCompleted = useCallback(async () => {
     const ids = todos.filter(todo => todo.completed).map(todo => todo.id);
-    // works cool to delete messages in "parallel" without showing an error if individual deletion fails
-    // const results = await Promise.allSettled(ids.map(id => deleteTodo(id)));
-    // const successfulIds = ids.filter(
-    //   (_, index) => results[index].status === 'fulfilled',
-    // );
-    // setTodos(current =>
-    //   current.filter(todo => !successfulIds.includes(todo.id)),
-    // );
 
-    ids.forEach(handleDeleteTodo);
-  }, [todos, handleDeleteTodo]);
+    handleDeleteTodos(...ids);
+  }, [todos, handleDeleteTodos]);
 
   const handleClearError = useCallback(
     () => setErrorMessage(ErrorMessage.NO_ERROR),
@@ -157,7 +162,7 @@ export const App: React.FC = () => {
           todos={visibleTodos}
           deletedTodoIds={deletingIds}
           temporaryTodo={temporaryTodo}
-          onTodoRemove={handleDeleteTodo}
+          onTodoRemove={handleDeleteTodos}
         />
         {todos.length > 0 && (
           <TodoFooter
